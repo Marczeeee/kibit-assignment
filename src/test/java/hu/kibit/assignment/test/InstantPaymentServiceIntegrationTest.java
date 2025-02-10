@@ -33,7 +33,7 @@ public class InstantPaymentServiceIntegrationTest {
     private AccountRepository accountRepository;
 
     @Test
-    void testMakingPayment_Result_Success() throws Exception {
+    void testPayment() throws Exception {
         final Account creditorAccount = generateAccount();
         final Account debitorAccount = generateAccount();
         final BigDecimal amount = BigDecimal.TEN;

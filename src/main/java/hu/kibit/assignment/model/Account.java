@@ -11,18 +11,20 @@ import lombok.Data;
 import java.math.BigDecimal;
 import java.util.UUID;
 
+/** Account entity class. */
 @Entity
 @Table(name = "account")
 @Data
 public class Account {
+    /** Unique generated ID field. */
     @Id
     @Column(name = "id")
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
-
-    @Column(name = "accountNo", nullable = false)
+    /** (Unique) Account number value. */
+    @Column(name = "accountNo", nullable = false, unique = true)
     private String accountNo;
-
+    /** Account balance value. */
     @Column(name = "balance", nullable = false, scale = 2)
     private BigDecimal balance;
 }

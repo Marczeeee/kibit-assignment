@@ -10,17 +10,21 @@ import lombok.NoArgsConstructor;
 import java.io.Serializable;
 import java.math.BigDecimal;
 
+/** Incoming instant payment request data class. */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class InstantPaymentRequest implements Serializable {
+    /** Creditor account's account number. */
     @NotEmpty
     private String creditorAccountNo;
+    /** Debitor account's account number. */
     @NotEmpty
     private String debitorAccountNo;
+    /** Payment amount value. */
     @NotNull
     @PositiveOrZero
     private BigDecimal amount;
-
+    /** Optional payment comment. */
     private String comment;
 }

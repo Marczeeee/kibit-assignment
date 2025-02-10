@@ -12,12 +12,16 @@ import org.springframework.stereotype.Service;
 
 import java.util.Date;
 
+/**
+ * Implementation class for {@link InstantPaymentService}.
+ */
 @Service
 @Slf4j
 public class InstantPaymentServiceImpl implements InstantPaymentService {
+    /** {@link AccountRepository} bean. */
     @Autowired
     private AccountRepository accountRepository;
-
+    /** {@link InstantPaymentRepository} bean. */
     @Autowired
     private InstantPaymentRepository instantPaymentRepository;
 
