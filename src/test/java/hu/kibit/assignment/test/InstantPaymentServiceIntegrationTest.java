@@ -33,7 +33,7 @@ public class InstantPaymentServiceIntegrationTest {
     private AccountRepository accountRepository;
 
     @Test
-    void testPayment() throws Exception {
+    void testPayment_Result_Success() {
         final Account creditorAccount = generateAccount();
         final Account debitorAccount = generateAccount();
         final BigDecimal amount = BigDecimal.TEN;
@@ -55,10 +55,28 @@ public class InstantPaymentServiceIntegrationTest {
         Assertions.assertEquals(comment, instantPayment.getComment());
     }
 
+    @Test
+    void testPayment_Result_NotEnoughBalance() {
+        final Account creditorAccount = generateAccount();
+        final Account debitorAccount = generateAccount(BigDecimal.ONE);
+        final BigDecimal amount = BigDecimal.TEN;
+        final String comment = RandomStringUtils.secure().nextAlphabetic(32);
+
+        final InstantPaymentRequest instantPaymentRequest = new InstantPaymentRequest(
+                creditorAccount.getAccountNo(), debitorAccount.getAccountNo(), amount, comment);
+        Assertions.assertThrowsExactly(IllegalArgumentException.class, () -> {
+            instantPaymentService.makeInstantPayment(instantPaymentRequest);
+        });
+    }
+
     private Account generateAccount() {
+        return generateAccount(BigDecimal.valueOf(1000));
+    }
+
+    private Account generateAccount(final BigDecimal initialBalance) {
         final Account account = new Account();
         account.setAccountNo(RandomStringUtils.secure().nextAlphanumeric(8, 16));
-        account.setBalance(BigDecimal.valueOf(1000));
+        account.setBalance(initialBalance);
         return accountRepository.save(account);
     }
 }

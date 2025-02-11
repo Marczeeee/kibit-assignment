@@ -9,7 +9,11 @@ import hu.kibit.assignment.service.api.InstantPaymentService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import java.math.BigDecimal;
 import java.util.Date;
 
 /**
@@ -24,6 +28,9 @@ public class InstantPaymentServiceImpl implements InstantPaymentService {
     /** {@link InstantPaymentRepository} bean. */
     @Autowired
     private InstantPaymentRepository instantPaymentRepository;
+    /** {@link PlatformTransactionManager} instance. */
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @Override
     public InstantPayment makeInstantPayment(final InstantPaymentRequest instantPaymentRequest) {
@@ -32,7 +39,12 @@ public class InstantPaymentServiceImpl implements InstantPaymentService {
         final Account creditorAccount = accountRepository.findByAccountNo(instantPaymentRequest.getCreditorAccountNo());
         final Account debitorAccount = accountRepository.findByAccountNo(instantPaymentRequest.getDebitorAccountNo());
 
-        //OPEN TX
+        final boolean isDebitorBalanceSufficient = checkDebitorAccountBalanceSufficient(debitorAccount, instantPaymentRequest.getAmount());
+        if (!isDebitorBalanceSufficient) {
+            //TODO: Use custom exception for this
+            throw new IllegalArgumentException("Debitor account hasn't got enough balance for this payment!");
+        }
+
         final InstantPayment instantPayment = new InstantPayment();
         instantPayment.setCreditorAccount(creditorAccount);
         instantPayment.setDebitorAccount(debitorAccount);
@@ -40,14 +52,27 @@ public class InstantPaymentServiceImpl implements InstantPaymentService {
         instantPayment.setComment(instantPaymentRequest.getComment());
         instantPayment.setPaymentDate(new Date());
 
-        final InstantPayment persistedInstantPayment = instantPaymentRepository.save(instantPayment);
-        creditorAccount.setBalance(creditorAccount.getBalance().add(instantPaymentRequest.getAmount()));
-        accountRepository.save(creditorAccount);
-        debitorAccount.setBalance(debitorAccount.getBalance().subtract(instantPaymentRequest.getAmount()));
-        accountRepository.save(debitorAccount);
-
+        //OPEN TX
+        final TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
+        transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        return  transactionTemplate.execute(status -> {
+            final InstantPayment persistedInstantPayment = instantPaymentRepository.save(instantPayment);
+            creditorAccount.setBalance(creditorAccount.getBalance().add(instantPaymentRequest.getAmount()));
+            accountRepository.save(creditorAccount);
+            debitorAccount.setBalance(debitorAccount.getBalance().subtract(instantPaymentRequest.getAmount()));
+            accountRepository.save(debitorAccount);
+            return persistedInstantPayment;
+        });
         //CLOSE TX
+    }
 
-        return persistedInstantPayment;
+    /**
+     * Checks if the debitor account has enough free balance to accomplish the requested payment.
+     * @param debitorAccount Debitor account object
+     * @param paymentAmount Payment amount requested
+     * @return Returns {@code true} if the debitor account has enough free balance, false if it doesn't
+     */
+    private boolean checkDebitorAccountBalanceSufficient(final Account debitorAccount, final BigDecimal paymentAmount) {
+        return debitorAccount.getBalance().compareTo(paymentAmount) >= 0;
     }
 }
