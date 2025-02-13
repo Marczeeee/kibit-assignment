@@ -1,6 +1,8 @@
 package hu.kibit.assignment.service.impl;
 
 import hu.kibit.assignment.dto.InstantPaymentRequest;
+import hu.kibit.assignment.exc.MissingAccountException;
+import hu.kibit.assignment.exc.NoSufficientBalanceException;
 import hu.kibit.assignment.model.Account;
 import hu.kibit.assignment.model.InstantPayment;
 import hu.kibit.assignment.repository.AccountRepository;
@@ -15,6 +17,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.util.Date;
+import java.util.Optional;
 
 /**
  * Implementation class for {@link InstantPaymentService}.
@@ -33,16 +36,29 @@ public class InstantPaymentServiceImpl implements InstantPaymentService {
     private PlatformTransactionManager transactionManager;
 
     @Override
-    public InstantPayment makeInstantPayment(final InstantPaymentRequest instantPaymentRequest) {
+    public synchronized InstantPayment makeInstantPayment(final InstantPaymentRequest instantPaymentRequest)
+            throws NoSufficientBalanceException, MissingAccountException {
         log.info("Processing instance payment request: {}", instantPaymentRequest);
         log.debug("Checking if creditor account exists");
-        final Account creditorAccount = accountRepository.findByAccountNo(instantPaymentRequest.getCreditorAccountNo());
-        final Account debitorAccount = accountRepository.findByAccountNo(instantPaymentRequest.getDebitorAccountNo());
+        final Optional<Account> creditorAccountOptional = accountRepository.findByAccountNo(instantPaymentRequest.getCreditorAccountNo());
+        if (creditorAccountOptional.isEmpty()) {
+            log.error("No account was found with account no: {}", instantPaymentRequest.getCreditorAccountNo());
+            throw new MissingAccountException(instantPaymentRequest.getCreditorAccountNo());
+        }
+        final Optional<Account> debitorAccountOptional = accountRepository.findByAccountNo(instantPaymentRequest.getDebitorAccountNo());
+        if (debitorAccountOptional.isEmpty()) {
+            log.error("No account was found with account no: {}", instantPaymentRequest.getDebitorAccountNo());
+            throw new MissingAccountException(instantPaymentRequest.getDebitorAccountNo());
+        }
+
+        final Account creditorAccount = creditorAccountOptional.get();
+        final Account debitorAccount = debitorAccountOptional.get();
 
         final boolean isDebitorBalanceSufficient = checkDebitorAccountBalanceSufficient(debitorAccount, instantPaymentRequest.getAmount());
         if (!isDebitorBalanceSufficient) {
-            //TODO: Use custom exception for this
-            throw new IllegalArgumentException("Debitor account hasn't got enough balance for this payment!");
+            log.error("Debitor account ({}) hasn't got enough balance to fulfill the requested amount ({})",
+                    debitorAccount.getBalance(), instantPaymentRequest.getAmount());
+            throw new NoSufficientBalanceException(debitorAccount.getAccountNo());
         }
 
         final InstantPayment instantPayment = new InstantPayment();
@@ -52,7 +68,6 @@ public class InstantPaymentServiceImpl implements InstantPaymentService {
         instantPayment.setComment(instantPaymentRequest.getComment());
         instantPayment.setPaymentDate(new Date());
 
-        //OPEN TX
         final TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
         transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         return  transactionTemplate.execute(status -> {
@@ -63,11 +78,10 @@ public class InstantPaymentServiceImpl implements InstantPaymentService {
             accountRepository.save(debitorAccount);
             return persistedInstantPayment;
         });
-        //CLOSE TX
     }
 
     /**
-     * Checks if the debitor account has enough free balance to accomplish the requested payment.
+     * Checks if the debitor account has enough free balance to fulfill the requested payment.
      * @param debitorAccount Debitor account object
      * @param paymentAmount Payment amount requested
      * @return Returns {@code true} if the debitor account has enough free balance, false if it doesn't

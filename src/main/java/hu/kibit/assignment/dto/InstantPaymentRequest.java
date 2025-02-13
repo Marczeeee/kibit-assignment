@@ -2,7 +2,7 @@ package hu.kibit.assignment.dto;
 
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Positive;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -23,7 +23,7 @@ public class InstantPaymentRequest implements Serializable {
     private String debitorAccountNo;
     /** Payment amount value. */
     @NotNull
-    @PositiveOrZero
+    @Positive
     private BigDecimal amount;
     /** Optional payment comment. */
     private String comment;

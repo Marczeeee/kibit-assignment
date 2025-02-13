@@ -2,10 +2,13 @@ package hu.kibit.assignment.test;
 
 import hu.kibit.assignment.InstantPaymentApplication;
 import hu.kibit.assignment.dto.InstantPaymentRequest;
+import hu.kibit.assignment.exc.MissingAccountException;
+import hu.kibit.assignment.exc.NoSufficientBalanceException;
 import hu.kibit.assignment.model.Account;
 import hu.kibit.assignment.model.InstantPayment;
 import hu.kibit.assignment.repository.AccountRepository;
 import hu.kibit.assignment.service.api.InstantPaymentService;
+import hu.kibit.assignment.test.util.InstantPaymentTestHelper;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -25,17 +28,20 @@ import java.math.BigDecimal;
 @AutoConfigureMockMvc
 @TestPropertySource(
         locations = "classpath:it-test.properties")
-public class InstantPaymentServiceIntegrationTest {
+class InstantPaymentServiceIntegrationTest {
     @Autowired
     private InstantPaymentService instantPaymentService;
 
     @Autowired
     private AccountRepository accountRepository;
 
+    @Autowired
+    private InstantPaymentTestHelper instantPaymentTestHelper;
+
     @Test
-    void testPayment_Result_Success() {
-        final Account creditorAccount = generateAccount();
-        final Account debitorAccount = generateAccount();
+    void testPayment_Result_Success() throws Exception {
+        final Account creditorAccount = instantPaymentTestHelper.generateAccount();
+        final Account debitorAccount = instantPaymentTestHelper.generateAccount();
         final BigDecimal amount = BigDecimal.TEN;
         final String comment = RandomStringUtils.secure().nextAlphabetic(32);
 
@@ -56,27 +62,42 @@ public class InstantPaymentServiceIntegrationTest {
     }
 
     @Test
-    void testPayment_Result_NotEnoughBalance() {
-        final Account creditorAccount = generateAccount();
-        final Account debitorAccount = generateAccount(BigDecimal.ONE);
+    void testPayment_CreditorAccountInvalid_Result_ValidationError() {
+        final Account debitorAccount = instantPaymentTestHelper.generateAccount();
+        final BigDecimal amount = BigDecimal.TEN;
+        final String comment = RandomStringUtils.secure().nextAlphabetic(32);
+
+        final InstantPaymentRequest instantPaymentRequest = new InstantPaymentRequest(
+                RandomStringUtils.secure().nextAlphanumeric(8), debitorAccount.getAccountNo(), amount, comment);
+        Assertions.assertThrowsExactly(MissingAccountException.class, () -> {
+            instantPaymentService.makeInstantPayment(instantPaymentRequest);
+        });
+    }
+
+    @Test
+    void testPayment_DebitorAccountInvalid_Result_ValidationError() {
+        final Account creditorAccount = instantPaymentTestHelper.generateAccount();
+        final BigDecimal amount = BigDecimal.TEN;
+        final String comment = RandomStringUtils.secure().nextAlphabetic(32);
+
+        final InstantPaymentRequest instantPaymentRequest = new InstantPaymentRequest(
+                creditorAccount.getAccountNo(), RandomStringUtils.secure().nextAlphanumeric(8), amount, comment);
+        Assertions.assertThrowsExactly(MissingAccountException.class, () -> {
+            instantPaymentService.makeInstantPayment(instantPaymentRequest);
+        });
+    }
+
+    @Test
+    void testPayment_NotEnoughBalance_Result_BalanceCheckError() {
+        final Account creditorAccount = instantPaymentTestHelper.generateAccount();
+        final Account debitorAccount = instantPaymentTestHelper.generateAccount(BigDecimal.ONE);
         final BigDecimal amount = BigDecimal.TEN;
         final String comment = RandomStringUtils.secure().nextAlphabetic(32);
 
         final InstantPaymentRequest instantPaymentRequest = new InstantPaymentRequest(
                 creditorAccount.getAccountNo(), debitorAccount.getAccountNo(), amount, comment);
-        Assertions.assertThrowsExactly(IllegalArgumentException.class, () -> {
+        Assertions.assertThrowsExactly(NoSufficientBalanceException.class, () -> {
             instantPaymentService.makeInstantPayment(instantPaymentRequest);
         });
-    }
-
-    private Account generateAccount() {
-        return generateAccount(BigDecimal.valueOf(1000));
-    }
-
-    private Account generateAccount(final BigDecimal initialBalance) {
-        final Account account = new Account();
-        account.setAccountNo(RandomStringUtils.secure().nextAlphanumeric(8, 16));
-        account.setBalance(initialBalance);
-        return accountRepository.save(account);
     }
 }
