@@ -9,6 +9,7 @@ import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
+import org.springframework.kafka.core.KafkaAdmin;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
 import org.springframework.kafka.support.serializer.JsonSerializer;
@@ -28,14 +29,17 @@ public class AppConfiguration {
     @Value("${kafka.notification.topic.name}")
     private String notificationTopicName;
 
+    @Value("${spring.kafka.bootstrap-servers}")
+    private String bootstrapServers;
+
     /**
      * Creates properties {@link Map} for Kafka producer.
      * @return Map of properties
      */
-    @Bean
-    public Map<String, Object> kafkaProducerConfigurationMap() {
+    private Map<String, Object> kafkaProducerConfigurationMap() {
         final Map<String, Object> props =
                 new HashMap<>(kafkaProperties.buildProducerProperties());
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,
                 StringSerializer.class);
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
@@ -57,8 +61,8 @@ public class AppConfiguration {
      * @return New {@link KafkaTemplate} instance
      */
     @Bean
-    public KafkaTemplate<String, Object> kafkaTemplate() {
-        return new KafkaTemplate<>(kafkaProducerFactory());
+    public KafkaTemplate<String, Object> kafkaTemplate(final ProducerFactory<String, Object> producerFactory) {
+        return new KafkaTemplate<>(producerFactory);
     }
 
     /**
