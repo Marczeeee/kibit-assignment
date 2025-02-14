@@ -15,6 +15,8 @@ To set how the application works, you can use the following Docker environment v
 - SPRING_DATASOURCE_PASSWORD - Password used to connect to the database server
 - SPRING_DATASOURCE_DRIVER-CLASS-NAME - JDBC driver class to be used
 - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT - Sets the database dialect to be used by Hibernate
+- KAFKA_NOTIFICATION_TOPIC_NAME - Name of the Kafka topic the application uses for payment notifications.
+- SPRING_KAFKA_BOOTSTRAP-SERVERS - Comma-delimited list of host:port pairs of Kafka servers to make connections to.
 
 By default, the application contains JDBC driver for PostgreSQL databases.
 
@@ -30,7 +32,7 @@ required by the application. The data SQL creates some demo accounts you can use
 
 The application automatically creates the database tables and populates them when the application starts.
 
-## Account to use
+## Accounts to use
 You can use the following account numbers for testing payments:
 - 1001001 - Default balance: 1000
 - 2002002 - Default balance: 2000
