@@ -21,6 +21,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import java.math.BigDecimal;
+import java.util.Optional;
 
 @ExtendWith(SpringExtension.class)
 @SpringBootTest(
@@ -61,6 +62,14 @@ class InstantPaymentServiceIntegrationTest {
         Assertions.assertEquals(debitorAccount.getId(), instantPayment.getDebitorAccount().getId());
         Assertions.assertEquals(amount, instantPayment.getAmount());
         Assertions.assertEquals(comment, instantPayment.getComment());
+
+        Optional<Account> creditorAccountOptional = accountRepository.findByAccountNo(creditorAccount.getAccountNo());
+        final Account updatedCreditorAccount = creditorAccountOptional.get();
+        Assertions.assertEquals(0, updatedCreditorAccount.getBalance().compareTo(creditorAccount.getBalance().add(amount)));
+
+        Optional<Account> debitorAccountOptional = accountRepository.findByAccountNo(debitorAccount.getAccountNo());
+        final Account updatedDebitorAccount = debitorAccountOptional.get();
+        Assertions.assertEquals(0, updatedDebitorAccount.getBalance().compareTo(debitorAccount.getBalance().subtract(amount)));
     }
 
     @Test
@@ -95,5 +104,13 @@ class InstantPaymentServiceIntegrationTest {
         final InstantPaymentRequest instantPaymentRequest = new InstantPaymentRequest(
                 creditorAccount.getAccountNo(), debitorAccount.getAccountNo(), amount, comment);
         Assertions.assertThrowsExactly(NoSufficientBalanceException.class, () -> instantPaymentService.makeInstantPayment(instantPaymentRequest));
+
+        Optional<Account> creditorAccountOptional = accountRepository.findByAccountNo(creditorAccount.getAccountNo());
+        final Account creditorAccountObj = creditorAccountOptional.get();
+        Assertions.assertEquals(0, creditorAccountObj.getBalance().compareTo(creditorAccount.getBalance()));
+
+        Optional<Account> debitorAccountOptional = accountRepository.findByAccountNo(debitorAccount.getAccountNo());
+        final Account debitorAccountObj = debitorAccountOptional.get();
+        Assertions.assertEquals(0, debitorAccountObj.getBalance().compareTo(debitorAccount.getBalance()));
     }
 }
