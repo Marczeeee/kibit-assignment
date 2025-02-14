@@ -3,10 +3,10 @@ package hu.kibit.assignment.controller;
 import hu.kibit.assignment.dto.InstantPaymentRequest;
 import hu.kibit.assignment.exc.MissingAccountException;
 import hu.kibit.assignment.exc.NoSufficientBalanceException;
+import hu.kibit.assignment.exc.PaymentTransactionException;
 import hu.kibit.assignment.model.InstantPayment;
 import hu.kibit.assignment.service.api.InstantPaymentService;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotNull;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -38,7 +38,7 @@ public class InstantPaymentController {
         final InstantPayment instantPayment;
         try {
             instantPayment = instantPaymentService.makeInstantPayment(instantPaymentRequest);
-        } catch (final NoSufficientBalanceException | MissingAccountException e) {
+        } catch (final NoSufficientBalanceException | MissingAccountException | PaymentTransactionException e) {
             log.error("Bad instant payment request was received ({}), processing failed", instantPaymentRequest);
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }

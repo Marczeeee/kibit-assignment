@@ -16,6 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 
@@ -28,6 +29,7 @@ import java.math.BigDecimal;
 @AutoConfigureMockMvc
 @TestPropertySource(
         locations = "classpath:it-test.properties")
+@EmbeddedKafka(partitions = 1, brokerProperties = { "listeners=PLAINTEXT://localhost:9092", "port=9092" })
 class InstantPaymentServiceIntegrationTest {
     @Autowired
     private InstantPaymentService instantPaymentService;
@@ -69,9 +71,7 @@ class InstantPaymentServiceIntegrationTest {
 
         final InstantPaymentRequest instantPaymentRequest = new InstantPaymentRequest(
                 RandomStringUtils.secure().nextAlphanumeric(8), debitorAccount.getAccountNo(), amount, comment);
-        Assertions.assertThrowsExactly(MissingAccountException.class, () -> {
-            instantPaymentService.makeInstantPayment(instantPaymentRequest);
-        });
+        Assertions.assertThrowsExactly(MissingAccountException.class, () -> instantPaymentService.makeInstantPayment(instantPaymentRequest));
     }
 
     @Test
@@ -82,9 +82,7 @@ class InstantPaymentServiceIntegrationTest {
 
         final InstantPaymentRequest instantPaymentRequest = new InstantPaymentRequest(
                 creditorAccount.getAccountNo(), RandomStringUtils.secure().nextAlphanumeric(8), amount, comment);
-        Assertions.assertThrowsExactly(MissingAccountException.class, () -> {
-            instantPaymentService.makeInstantPayment(instantPaymentRequest);
-        });
+        Assertions.assertThrowsExactly(MissingAccountException.class, () -> instantPaymentService.makeInstantPayment(instantPaymentRequest));
     }
 
     @Test
@@ -96,8 +94,6 @@ class InstantPaymentServiceIntegrationTest {
 
         final InstantPaymentRequest instantPaymentRequest = new InstantPaymentRequest(
                 creditorAccount.getAccountNo(), debitorAccount.getAccountNo(), amount, comment);
-        Assertions.assertThrowsExactly(NoSufficientBalanceException.class, () -> {
-            instantPaymentService.makeInstantPayment(instantPaymentRequest);
-        });
+        Assertions.assertThrowsExactly(NoSufficientBalanceException.class, () -> instantPaymentService.makeInstantPayment(instantPaymentRequest));
     }
 }

@@ -3,13 +3,18 @@ package hu.kibit.assignment.service.impl;
 import hu.kibit.assignment.dto.InstantPaymentRequest;
 import hu.kibit.assignment.exc.MissingAccountException;
 import hu.kibit.assignment.exc.NoSufficientBalanceException;
+import hu.kibit.assignment.exc.PaymentTransactionException;
 import hu.kibit.assignment.model.Account;
 import hu.kibit.assignment.model.InstantPayment;
 import hu.kibit.assignment.repository.AccountRepository;
 import hu.kibit.assignment.repository.InstantPaymentRepository;
 import hu.kibit.assignment.service.api.InstantPaymentService;
+import lombok.Synchronized;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.NestedRuntimeException;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -34,10 +39,17 @@ public class InstantPaymentServiceImpl implements InstantPaymentService {
     /** {@link PlatformTransactionManager} instance. */
     @Autowired
     private PlatformTransactionManager transactionManager;
+    /** {@link KafkaTemplate} bean. */
+    @Autowired
+    private KafkaTemplate<String, Object> kafkaTemplate;
+    /** Name of the Kafka topic for notifications. */
+    @Value("${kafka.notification.topic.name}")
+    private String notificationTopicName;
 
+    @Synchronized
     @Override
-    public synchronized InstantPayment makeInstantPayment(final InstantPaymentRequest instantPaymentRequest)
-            throws NoSufficientBalanceException, MissingAccountException {
+    public InstantPayment makeInstantPayment(final InstantPaymentRequest instantPaymentRequest)
+            throws NoSufficientBalanceException, MissingAccountException, PaymentTransactionException {
         log.info("Processing instance payment request: {}", instantPaymentRequest);
         log.debug("Checking if creditor account exists");
         final Optional<Account> creditorAccountOptional = accountRepository.findByAccountNo(instantPaymentRequest.getCreditorAccountNo());
@@ -67,17 +79,33 @@ public class InstantPaymentServiceImpl implements InstantPaymentService {
         instantPayment.setAmount(instantPaymentRequest.getAmount());
         instantPayment.setComment(instantPaymentRequest.getComment());
         instantPayment.setPaymentDate(new Date());
+        log.debug("Instant payment record is prepared ({}), ready to be persisted", instantPayment);
 
         final TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
         transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-        return  transactionTemplate.execute(status -> {
-            final InstantPayment persistedInstantPayment = instantPaymentRepository.save(instantPayment);
-            creditorAccount.setBalance(creditorAccount.getBalance().add(instantPaymentRequest.getAmount()));
-            accountRepository.save(creditorAccount);
-            debitorAccount.setBalance(debitorAccount.getBalance().subtract(instantPaymentRequest.getAmount()));
-            accountRepository.save(debitorAccount);
-            return persistedInstantPayment;
-        });
+        InstantPayment persistedInstantPaymentObj;
+        try {
+            persistedInstantPaymentObj = transactionTemplate.execute(status -> {
+                final InstantPayment persistedInstantPayment = instantPaymentRepository.save(instantPayment);
+                log.debug("Instant payment record ({}) persisted", instantPayment);
+                creditorAccount.setBalance(creditorAccount.getBalance().add(instantPaymentRequest.getAmount()));
+                accountRepository.save(creditorAccount);
+                log.debug("Creditor account ({}) balance changed to {}", creditorAccount.getAccountNo(), creditorAccount.getBalance());
+                debitorAccount.setBalance(debitorAccount.getBalance().subtract(instantPaymentRequest.getAmount()));
+                accountRepository.save(debitorAccount);
+                log.debug("Debitor account ({}) balance changed to {}", debitorAccount.getAccountNo(), debitorAccount.getBalance());
+                return persistedInstantPayment;
+            });
+        } catch (final NestedRuntimeException e) {
+            log.error("Failed to persist instant payment details, rollback initiated due to error: {}", e.getMessage());
+            log.debug("Instant payment transaction error", e);
+            throw new PaymentTransactionException(e.getMessage());
+        }
+
+        kafkaTemplate.send(notificationTopicName, creditorAccount.getAccountNo(), persistedInstantPaymentObj);
+        log.debug("Notification to creditor ({}) was sent", creditorAccount.getAccountNo());
+
+        return persistedInstantPaymentObj;
     }
 
     /**
