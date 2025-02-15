@@ -7,12 +7,14 @@ import hu.kibit.assignment.dto.InstantPaymentRequest;
 import hu.kibit.assignment.model.Account;
 import hu.kibit.assignment.test.util.InstantPaymentTestHelper;
 import org.apache.commons.lang3.RandomStringUtils;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.test.annotation.DirtiesContext;
@@ -23,6 +25,8 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers;
 
 import java.math.BigDecimal;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.IntStream;
 
 @ExtendWith(SpringExtension.class)
 @SpringBootTest(
@@ -124,6 +128,35 @@ class InstantPaymentControllerTest {
         mvc.perform(MockMvcRequestBuilders.post("/api/instantpayment/payment/make").contentType(MediaType.APPLICATION_JSON)
                         .content(toJson(instantPaymentRequest)))
                 .andExpect(MockMvcResultMatchers.status().isBadRequest());
+    }
+
+    @Test
+    void controller_TestPayment_RateLimit() {
+        final Account creditorAccount = instantPaymentTestHelper.generateAccount();
+        final Account debitorAccount = instantPaymentTestHelper.generateAccount();
+        final BigDecimal amount = BigDecimal.TEN;
+        final String comment = RandomStringUtils.secure().nextAlphabetic(32);
+
+        final AtomicInteger rateLimitFailedRequestCount = new AtomicInteger(0);
+
+        IntStream.rangeClosed(1, 20).parallel().forEach(value -> {
+            final InstantPaymentRequest instantPaymentRequest = new InstantPaymentRequest(
+                    creditorAccount.getAccountNo(), debitorAccount.getAccountNo(), amount, comment);
+
+            try {
+                mvc.perform(MockMvcRequestBuilders.post("/api/instantpayment/payment/make").contentType(MediaType.APPLICATION_JSON)
+                                .content(toJson(instantPaymentRequest)))
+                        .andDo(result -> {
+                            if (result.getResponse().getStatus() == HttpStatus.TOO_MANY_REQUESTS.value()) {
+                                rateLimitFailedRequestCount.incrementAndGet();
+                            }
+                        });
+            } catch (final Exception e) {
+                Assertions.fail();
+            }
+        });
+
+        Assertions.assertTrue( rateLimitFailedRequestCount.get() > 0);
     }
 
     private String toJson(final InstantPaymentRequest instantPaymentRequest) throws JsonProcessingException {

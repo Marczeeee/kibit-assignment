@@ -1,14 +1,14 @@
 package hu.kibit.assignment.controller;
 
-import hu.kibit.assignment.InstantPaymentApplication;
 import hu.kibit.assignment.dto.InstantPaymentRequest;
 import hu.kibit.assignment.exc.MissingAccountException;
 import hu.kibit.assignment.exc.NoSufficientBalanceException;
 import hu.kibit.assignment.exc.PaymentTransactionException;
 import hu.kibit.assignment.model.InstantPayment;
 import hu.kibit.assignment.service.api.InstantPaymentService;
+import io.github.resilience4j.ratelimiter.RequestNotPermitted;
+import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -18,9 +18,11 @@ import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -52,6 +54,7 @@ public class InstantPaymentController {
             @ApiResponse(responseCode = "500", description = "Payment processing failed", content = @Content),
     })
     @PostMapping("/payment/make")
+    @RateLimiter(name = "instantPaymentRateLimiter")
     public InstantPayment makeInstantPayment(@io.swagger.v3.oas.annotations.parameters.RequestBody(
             description = "Instant payment request object", required = true, content = {
                     @Content(mediaType = "application/json", schema = @Schema(implementation = InstantPaymentRequest.class))})
@@ -73,4 +76,12 @@ public class InstantPaymentController {
         log.info("Instant payment request processed, result: {}", instantPayment);
         return instantPayment;
     }
+
+    /**
+     * {@link ExceptionHandler} for rate limiter to send {@link HttpStatus#TOO_MANY_REQUESTS} status code if rate limit
+     * exceeded.
+     */
+    @ExceptionHandler({ RequestNotPermitted.class })
+    @ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
+    public void handleRateLimitRequestNotPermitted() {}
 }
