@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +30,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/api/instantpayment")
 @Slf4j
+@Tag(name = "instant-payment-service", description = "Instant Payment Service API")
 public class InstantPaymentController {
     /** {@link InstantPaymentService} bean instance. */
     @Autowired
@@ -50,8 +52,10 @@ public class InstantPaymentController {
             @ApiResponse(responseCode = "500", description = "Payment processing failed", content = @Content),
     })
     @PostMapping("/payment/make")
-    public InstantPayment makeInstantPayment(@Parameter(description = "Instant payment request object") @Valid @RequestBody
-                                                 final InstantPaymentRequest instantPaymentRequest) {
+    public InstantPayment makeInstantPayment(@io.swagger.v3.oas.annotations.parameters.RequestBody(
+            description = "Instant payment request object", required = true, content = {
+                    @Content(mediaType = "application/json", schema = @Schema(implementation = InstantPaymentRequest.class))})
+                                                 @Valid @RequestBody final InstantPaymentRequest instantPaymentRequest) {
         log.info("Receiving new instance payment request, handling it to processing ({})", instantPaymentRequest);
         final InstantPayment instantPayment;
         try {
