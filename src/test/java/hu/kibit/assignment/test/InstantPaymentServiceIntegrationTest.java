@@ -4,6 +4,7 @@ import hu.kibit.assignment.InstantPaymentApplication;
 import hu.kibit.assignment.dto.InstantPaymentRequest;
 import hu.kibit.assignment.exc.MissingAccountException;
 import hu.kibit.assignment.exc.NoSufficientBalanceException;
+import hu.kibit.assignment.exc.PaymentTransactionException;
 import hu.kibit.assignment.model.Account;
 import hu.kibit.assignment.model.InstantPayment;
 import hu.kibit.assignment.repository.AccountRepository;
@@ -23,6 +24,9 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import java.math.BigDecimal;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @ExtendWith(SpringExtension.class)
 @SpringBootTest(
@@ -114,5 +118,48 @@ class InstantPaymentServiceIntegrationTest {
         Optional<Account> debitorAccountOptional = accountRepository.findByAccountNo(debitorAccount.getAccountNo());
         final Account debitorAccountObj = debitorAccountOptional.get();
         Assertions.assertEquals(0, debitorAccountObj.getBalance().compareTo(debitorAccount.getBalance()));
+    }
+
+    @Test
+    void testPaymentParallel_Result_Success() throws Exception {
+        final Account creditorAccount = instantPaymentTestHelper.generateAccount();
+        final Account debitorAccount = instantPaymentTestHelper.generateAccount();
+        final BigDecimal amount = BigDecimal.ONE;
+        final String comment = RandomStringUtils.secure().nextAlphabetic(32);
+
+        final ExecutorService executorService = Executors.newWorkStealingPool();
+
+        final int count = 1000;
+        final CountDownLatch countDownLatch = new CountDownLatch(count);
+
+        for (int i = 0; i < count; i++) {
+            executorService.execute(() -> {
+                final InstantPaymentRequest instantPaymentRequest = new InstantPaymentRequest(
+                        creditorAccount.getAccountNo(), debitorAccount.getAccountNo(), amount, comment);
+                try {
+                    final InstantPayment instantPayment = instantPaymentService.makeInstantPayment(instantPaymentRequest);
+                    Assertions.assertNotNull(instantPayment);
+                    Assertions.assertNotNull(instantPayment.getId());
+                    Assertions.assertNotNull(instantPayment.getCreditorAccount());
+                    Assertions.assertNotNull(instantPayment.getDebitorAccount());
+                    Assertions.assertNotNull(instantPayment.getAmount());
+                    Assertions.assertNotNull(instantPayment.getPaymentDate());
+                    countDownLatch.countDown();
+                } catch (final NoSufficientBalanceException | MissingAccountException | PaymentTransactionException e) {
+                    Assertions.fail();
+                    throw new RuntimeException(e);
+                }
+            });
+        }
+
+        countDownLatch.await();
+
+        Optional<Account> creditorAccountOptional = accountRepository.findByAccountNo(creditorAccount.getAccountNo());
+        final Account updatedCreditorAccount = creditorAccountOptional.get();
+        Assertions.assertEquals(0, updatedCreditorAccount.getBalance().compareTo(BigDecimal.valueOf(2000)));
+
+        Optional<Account> debitorAccountOptional = accountRepository.findByAccountNo(debitorAccount.getAccountNo());
+        final Account updatedDebitorAccount = debitorAccountOptional.get();
+        Assertions.assertEquals(0, updatedDebitorAccount.getBalance().compareTo(BigDecimal.ZERO));
     }
 }
