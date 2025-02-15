@@ -18,6 +18,8 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionException;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
@@ -66,13 +68,6 @@ public class InstantPaymentServiceImpl implements InstantPaymentService {
         final Account creditorAccount = creditorAccountOptional.get();
         final Account debitorAccount = debitorAccountOptional.get();
 
-        final boolean isDebitorBalanceSufficient = checkDebitorAccountBalanceSufficient(debitorAccount, instantPaymentRequest.getAmount());
-        if (!isDebitorBalanceSufficient) {
-            log.error("Debitor account ({}) hasn't got enough balance to fulfill the requested amount ({})",
-                    debitorAccount.getBalance(), instantPaymentRequest.getAmount());
-            throw new NoSufficientBalanceException(debitorAccount.getAccountNo());
-        }
-
         final InstantPayment instantPayment = new InstantPayment();
         instantPayment.setCreditorAccount(creditorAccount);
         instantPayment.setDebitorAccount(debitorAccount);
@@ -83,20 +78,35 @@ public class InstantPaymentServiceImpl implements InstantPaymentService {
 
         final TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
         transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        transactionTemplate.setIsolationLevel(Isolation.SERIALIZABLE.value());
         InstantPayment persistedInstantPaymentObj;
         try {
             persistedInstantPaymentObj = transactionTemplate.execute(status -> {
+                final Optional<Account> debitorAccount4PaymentOptional = accountRepository.findByAccountNo(instantPaymentRequest.getDebitorAccountNo());
+                final Account debitorAccount4Payment = debitorAccount4PaymentOptional.get();
+                final boolean isDebitorBalanceSufficient = checkDebitorAccountBalanceSufficient(debitorAccount4Payment, instantPaymentRequest.getAmount());
+                if (!isDebitorBalanceSufficient) {
+                    throw new NoSufficientBalanceException(debitorAccount.getAccountNo());
+                }
+
+                final Optional<Account> creditorAccount4PaymentOptional = accountRepository.findByAccountNo(instantPaymentRequest.getCreditorAccountNo());
+                final Account creditorAccount4Payment = creditorAccount4PaymentOptional.get();
+
                 final InstantPayment persistedInstantPayment = instantPaymentRepository.save(instantPayment);
                 log.debug("Instant payment record ({}) persisted", instantPayment);
-                creditorAccount.setBalance(creditorAccount.getBalance().add(instantPaymentRequest.getAmount()));
-                accountRepository.save(creditorAccount);
-                log.debug("Creditor account ({}) balance changed to {}", creditorAccount.getAccountNo(), creditorAccount.getBalance());
-                debitorAccount.setBalance(debitorAccount.getBalance().subtract(instantPaymentRequest.getAmount()));
-                accountRepository.save(debitorAccount);
-                log.debug("Debitor account ({}) balance changed to {}", debitorAccount.getAccountNo(), debitorAccount.getBalance());
+                creditorAccount4Payment.setBalance(creditorAccount4Payment.getBalance().add(instantPaymentRequest.getAmount()));
+                accountRepository.save(creditorAccount4Payment);
+                log.debug("Creditor account ({}) balance changed to {}", creditorAccount4Payment.getAccountNo(), creditorAccount4Payment.getBalance());
+                debitorAccount4Payment.setBalance(debitorAccount4Payment.getBalance().subtract(instantPaymentRequest.getAmount()));
+                accountRepository.save(debitorAccount4Payment);
+                log.debug("Debitor account ({}) balance changed to {}", debitorAccount4Payment.getAccountNo(), debitorAccount4Payment.getBalance());
                 return persistedInstantPayment;
             });
-        } catch (final NestedRuntimeException e) {
+        } catch (final NoSufficientBalanceException e) {
+            log.error("Debitor account ({}) hasn't got enough balance to fulfill the requested amount ({})",
+                    instantPaymentRequest.getDebitorAccountNo(), instantPaymentRequest.getAmount());
+            throw e;
+        } catch (final TransactionException e) {
             log.error("Failed to persist instant payment details, rollback initiated due to error: {}", e.getMessage());
             log.debug("Instant payment transaction error", e);
             throw new PaymentTransactionException(e.getMessage());
